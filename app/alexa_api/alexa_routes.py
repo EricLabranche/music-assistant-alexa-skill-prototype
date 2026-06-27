@@ -1,34 +1,30 @@
 """Route definitions for alexa_api (alexa_routes).
 
-This module registers HTTP endpoints on a provided Flask
-`Blueprint`. It stores the last posted Alexa event in a
-module-level `_store` variable and exposes a simple status and
-retrieval endpoints similar to `ma_routes`.
+Registers HTTP endpoints on a Flask Blueprint to receive and store metadata 
+from the Alexa skill, using a shared in-memory store.
 """
 
 import os
 import json
 from pathlib import Path
 from flask import jsonify, request
-
-
-_store = None
+import shared_store  # Shared in-memory store for skill state
 
 
 def register_routes(bp):
     @bp.route('/push-url', methods=['POST'])
     def push_url():
-        """Accept JSON with streamUrl and optional metadata and store it.
+        """Accept JSON with streamUrl and optional metadata and store it in shared_store.
 
         Expected JSON body: { streamUrl, title, secondary, imageUrl }
         """
-        global _store
         data = request.get_json(silent=True) or {}
         stream_url = data.get('streamUrl')
         if not stream_url:
             return jsonify({'error': 'Missing required fields'}), 400
 
-        _store = {
+        # Save metadata to the shared store instead of a local variable
+        shared_store._store = {
             'streamUrl': stream_url,
             'title': data.get('title'),
             'secondary': data.get('secondary'),
@@ -38,11 +34,10 @@ def register_routes(bp):
 
     @bp.route('/latest-url', methods=['GET'])
     def latest_url():
-        """Return the last pushed stream metadata from the Alexa skill.
-        """
-        if not _store:
-            return jsonify({'error': 'Check skill invocations and skill logs.  If there are no invocations, you have made a configuration error'}), 404
-        return jsonify(_store)
+        """Return the last pushed stream metadata from the shared store."""
+        if not shared_store._store:
+            return jsonify({'error': 'Check skill invocations and skill logs. If there are no invocations, you have made a configuration error'}), 404
+        return jsonify(shared_store._store)
     
     @bp.route('/intents', methods=['GET'])
     def intents():

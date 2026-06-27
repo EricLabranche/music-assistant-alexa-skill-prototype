@@ -172,14 +172,26 @@ class LaunchRequestOrPlayAudioHandler(AbstractRequestHandler):
         logger.info("In LaunchRequestOrPlayAudioHandler")
 
         _ = handler_input.attributes_manager.request_attributes["_"]
-        request = handler_input.request_envelope.request
         url, _audio = _get_stream_url(request)
+        logger.info("URL from util.audio_data: %s", url)
+
+        # FIX: Fallback to shared_store directly if util.audio_data is empty
+        if not url:
+            try:
+                import shared_store
+                if shared_store._store and shared_store._store.get('streamUrl'):
+                    url = shared_store._store['streamUrl']
+                    logger.info("URL from shared_store fallback: %s", url)
+            except Exception as e:
+                logger.warning("shared_store fallback failed: %s", e)
+
         if not url:
             logger.warning("No streamUrl available for Launch/Play request")
             handler_input.response_builder.speak(
                 "Sorry, I could not retrieve the latest music stream from the API. Please check your setup.").set_should_end_session(True)
             return handler_input.response_builder.response
 
+        logger.info("Playing URL: %s", url)
         return util.play(
             url=url,
             offset=0,
@@ -668,19 +680,18 @@ class LocalizationInterceptor(AbstractRequestInterceptor):
         # type: (HandlerInput) -> None
         locale = getattr(handler_input.request_envelope.request, 'locale', None)
         if locale:
-            parts = locale.split("-")
-            lang = parts[0]
-            region = parts[1] if len(parts) > 1 else None
-        
-            mapping = {
-                "fr": "fr-CA" if region == "CA" else "fr-FR",
-                "it": "it-IT",
-                "es": "es-ES",
-                "pt": "pt-BR",
-                "de": "de-DE",
-            }
-        
-            locale_file_name = mapping.get(lang, locale)
+            if locale.startswith("fr"):
+                locale_file_name = "fr-FR"
+            elif locale.startswith("it"):
+                locale_file_name = "it-IT"
+            elif locale.startswith("es"):
+                locale_file_name = "es-ES"
+            elif locale.startswith("pt"):
+                locale_file_name = "pt-BR"
+            elif locale.startswith("de"):
+                locale_file_name = "de-DE"
+            else:
+                locale_file_name = locale
 
             i18n = gettext.translation(
                 'data', localedir='locales', languages=[locale_file_name],
